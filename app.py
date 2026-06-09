@@ -578,6 +578,87 @@ def build_edge_threshold_summary(backtest_df, edge_thresholds):
 
     return pd.DataFrame(rows)
 
+def build_edge_confidence_combo_summary(backtest_df, combo_rules):
+    rows = []
+
+    for rule in combo_rules:
+        edge_df = calculate_true_value_backtest(
+            backtest_df,
+            rule["Min Edge"]
+        )
+
+        if edge_df.empty:
+            rows.append({
+                "Rule": rule["Rule"],
+                "Min Edge %": rule["Min Edge"],
+                "Min Confidence %": rule["Min Confidence"],
+                "Bets": 0,
+                "Wins": 0,
+                "Accuracy %": 0,
+                "Total Stake": 0,
+                "Profit/Loss": 0,
+                "ROI %": 0
+            })
+            continue
+
+        combo_df = edge_df[
+            edge_df["Confidence"] >= rule["Min Confidence"]
+        ].copy()
+
+        if combo_df.empty:
+            rows.append({
+                "Rule": rule["Rule"],
+                "Min Edge %": rule["Min Edge"],
+                "Min Confidence %": rule["Min Confidence"],
+                "Bets": 0,
+                "Wins": 0,
+                "Accuracy %": 0,
+                "Total Stake": 0,
+                "Profit/Loss": 0,
+                "ROI %": 0
+            })
+            continue
+
+        bets = len(combo_df)
+
+        wins = len(
+            combo_df[
+                combo_df["Correct"] == True
+            ]
+        )
+
+        accuracy = (
+            wins
+            / bets
+            * 100
+        )
+
+        total_stake = combo_df["Stake"].sum()
+        profit_loss = combo_df["True Value Profit/Loss"].sum()
+
+        if total_stake > 0:
+            roi = (
+                profit_loss
+                / total_stake
+                * 100
+            )
+        else:
+            roi = 0
+
+        rows.append({
+            "Rule": rule["Rule"],
+            "Min Edge %": rule["Min Edge"],
+            "Min Confidence %": rule["Min Confidence"],
+            "Bets": bets,
+            "Wins": wins,
+            "Accuracy %": round(accuracy, 1),
+            "Total Stake": round(total_stake, 2),
+            "Profit/Loss": round(profit_loss, 2),
+            "ROI %": round(roi, 1)
+        })
+
+    return pd.DataFrame(rows)
+
 def calculate_profit_loss(stake, result, decimal_odds):
     result = str(result).strip().upper()
 
@@ -995,13 +1076,14 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.7 Edge Optimiser"
+        "V5.8 Combo Optimiser"
     )
 
 st.caption(
     "Backtests the SBT EDGE Elo model across completed historical AFL games. "
-    "V5.7 automatically compares true value edge thresholds using historical bookmaker odds."
+    "V5.8 compares true value edge thresholds against confidence filters using historical bookmaker odds."
 )
+
 # ==========================
 # ROUND SELECTOR
 # ==========================
@@ -2014,6 +2096,193 @@ if st.session_state.has_run_backtest:
                     label="Download Edge Threshold Optimiser CSV",
                     data=edge_balanced_summary.to_csv(index=False),
                     file_name="sbt_edge_v57_edge_threshold_optimiser.csv",
+                    mime="text/csv"
+                )
+
+            # --------------------------
+            # EDGE + CONFIDENCE COMBO OPTIMISER
+            # --------------------------
+
+            st.subheader("🧬 V5.8 Edge + Confidence Combo Optimiser")
+
+            combo_rules = [
+                {
+                    "Rule": "10%+ Edge / 55%+ Confidence",
+                    "Min Edge": 10,
+                    "Min Confidence": 55
+                },
+                {
+                    "Rule": "10%+ Edge / 60%+ Confidence",
+                    "Min Edge": 10,
+                    "Min Confidence": 60
+                },
+                {
+                    "Rule": "10%+ Edge / 70%+ Confidence",
+                    "Min Edge": 10,
+                    "Min Confidence": 70
+                },
+                {
+                    "Rule": "10%+ Edge / 75%+ Confidence",
+                    "Min Edge": 10,
+                    "Min Confidence": 75
+                },
+                {
+                    "Rule": "15%+ Edge / 55%+ Confidence",
+                    "Min Edge": 15,
+                    "Min Confidence": 55
+                },
+                {
+                    "Rule": "15%+ Edge / 60%+ Confidence",
+                    "Min Edge": 15,
+                    "Min Confidence": 60
+                },
+                {
+                    "Rule": "15%+ Edge / 70%+ Confidence",
+                    "Min Edge": 15,
+                    "Min Confidence": 70
+                },
+                {
+                    "Rule": "15%+ Edge / 75%+ Confidence",
+                    "Min Edge": 15,
+                    "Min Confidence": 75
+                },
+                {
+                    "Rule": "20%+ Edge / 55%+ Confidence",
+                    "Min Edge": 20,
+                    "Min Confidence": 55
+                },
+                {
+                    "Rule": "20%+ Edge / 60%+ Confidence",
+                    "Min Edge": 20,
+                    "Min Confidence": 60
+                },
+                {
+                    "Rule": "20%+ Edge / 70%+ Confidence",
+                    "Min Edge": 20,
+                    "Min Confidence": 70
+                },
+                {
+                    "Rule": "20%+ Edge / 75%+ Confidence",
+                    "Min Edge": 20,
+                    "Min Confidence": 75
+                }
+            ]
+
+            combo_summary = build_edge_confidence_combo_summary(
+                backtest_df,
+                combo_rules
+            )
+
+            st.dataframe(
+                combo_summary,
+                width="stretch",
+                hide_index=True
+            )
+
+            valid_combo_summary = combo_summary[
+                combo_summary["Bets"] > 0
+            ].copy()
+
+            if valid_combo_summary.empty:
+                st.warning(
+                    "No edge + confidence combo rules available to optimise."
+                )
+
+            else:
+                best_combo_roi_rule = valid_combo_summary.sort_values(
+                    "ROI %",
+                    ascending=False
+                ).iloc[0]
+
+                best_combo_profit_rule = valid_combo_summary.sort_values(
+                    "Profit/Loss",
+                    ascending=False
+                ).iloc[0]
+
+                combo_balanced_summary = valid_combo_summary.copy()
+
+                max_combo_profit = combo_balanced_summary["Profit/Loss"].max()
+                max_combo_bets = combo_balanced_summary["Bets"].max()
+
+                if max_combo_profit > 0:
+                    combo_balanced_summary["Profit Score"] = (
+                        combo_balanced_summary["Profit/Loss"]
+                        / max_combo_profit
+                        * 100
+                    )
+                else:
+                    combo_balanced_summary["Profit Score"] = 0
+
+                if max_combo_bets > 0:
+                    combo_balanced_summary["Volume Score"] = (
+                        combo_balanced_summary["Bets"]
+                        / max_combo_bets
+                        * 100
+                    )
+                else:
+                    combo_balanced_summary["Volume Score"] = 0
+
+                combo_balanced_summary["Balanced Score"] = (
+                    combo_balanced_summary["ROI %"] * 0.35
+                    + combo_balanced_summary["Accuracy %"] * 0.30
+                    + combo_balanced_summary["Profit Score"] * 0.20
+                    + combo_balanced_summary["Volume Score"] * 0.15
+                ).round(1)
+
+                best_combo_balanced_rule = combo_balanced_summary.sort_values(
+                    "Balanced Score",
+                    ascending=False
+                ).iloc[0]
+
+                combo_col1, combo_col2, combo_col3 = st.columns(3)
+
+                with combo_col1:
+                    st.metric(
+                        "Best Combo ROI Rule",
+                        best_combo_roi_rule["Rule"],
+                        f'{best_combo_roi_rule["ROI %"]}% ROI'
+                    )
+
+                with combo_col2:
+                    st.metric(
+                        "Best Combo Profit Rule",
+                        best_combo_profit_rule["Rule"],
+                        f'${best_combo_profit_rule["Profit/Loss"]:.2f}'
+                    )
+
+                with combo_col3:
+                    st.metric(
+                        "Best Balanced Combo Rule",
+                        best_combo_balanced_rule["Rule"],
+                        f'{best_combo_balanced_rule["Balanced Score"]:.1f} score'
+                    )
+
+                st.subheader("ROI by Edge + Confidence Combo")
+
+                st.bar_chart(
+                    combo_summary[
+                        [
+                            "Rule",
+                            "ROI %"
+                        ]
+                    ],
+                    x="Rule",
+                    y="ROI %",
+                    height=420
+                )
+
+                st.info(
+                    f'SBT EDGE best combined true value rule: '
+                    f'{best_combo_balanced_rule["Rule"]} '
+                    f'with {best_combo_balanced_rule["Bets"]} bets, '
+                    f'{best_combo_balanced_rule["Accuracy %"]}% accuracy, '
+                    f'and {best_combo_balanced_rule["ROI %"]}% real-odds ROI.'
+                )
+
+                st.download_button(
+                    label="Download Edge + Confidence Combo CSV",
+                    data=combo_balanced_summary.to_csv(index=False),
+                    file_name="sbt_edge_v58_edge_confidence_combo.csv",
                     mime="text/csv"
                 )
 
