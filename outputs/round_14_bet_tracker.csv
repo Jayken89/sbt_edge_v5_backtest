@@ -1,0 +1,5 @@
+Round,Match,Final Tip,Bet Type,Predicted Margin,Bookmaker Odds,Best Bookmaker,Elo Confidence,Break Even %,Model Edge %,Expected ROI %,Value Rating,Multi Eligible,Risk,Recommended Units,Recommended Stake,Stake,Result,Profit/Loss,Notes
+14,Geelong v Gold Coast,Geelong,H2H,Geelong by 11,1.5,Manual / No API Match,68.1,66.7,1.4,2.1,Small Edge,NO,MEDIUM,1,10.0,,,,
+14,Melbourne v Essendon,Melbourne,H2H,Melbourne by 27,1.5,Manual / No API Match,86.8,66.7,20.1,30.2,Strong Value,YES,LOW,1,10.0,,,,
+14,North Melbourne v West Coast,North Melbourne,H2H,North Melbourne by 14,1.5,Manual / No API Match,73.1,66.7,6.4,9.7,Value,YES,LOW,1,10.0,,,,
+14,Port Adelaide v Sydney,Sydney,H2H,Sydney by 18,1.5,Manual / No API Match,77.3,66.7,10.6,15.9,Strong Value,YES,LOW,1,10.0,,,,
