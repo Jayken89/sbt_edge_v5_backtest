@@ -298,10 +298,234 @@ def expected_roi(model_probability, decimal_odds):
 
     return (model_probability * decimal_odds) - 1
 
+def normalise_date_value(value):
+    if pd.isna(value):
+        return ""
+
+    if isinstance(value, (int, float)):
+        date_value = pd.to_datetime(
+            value,
+            unit="D",
+            origin="1899-12-30",
+            errors="coerce"
+        )
+    else:
+        date_value = pd.to_datetime(
+            value,
+            errors="coerce"
+        )
+
+    if pd.isna(date_value):
+        return str(value).strip()
+
+    return date_value.strftime("%Y-%m-%d")
+
+
+def first_existing_column(df, column_options):
+    for column in column_options:
+        if column in df.columns:
+            return column
+
+    return None
+
+
+def prepare_historical_odds_file(uploaded_file):
+    file_name = uploaded_file.name.lower()
+
+    if file_name.endswith(".xlsx"):
+        raw_df = pd.read_excel(
+            uploaded_file,
+            sheet_name="Data",
+            header=1
+        )
+
+        home_odds_column = first_existing_column(
+            raw_df,
+            [
+                "Home Odds Close",
+                "Home Odds",
+                "Home Odds Open"
+            ]
+        )
+
+        away_odds_column = first_existing_column(
+            raw_df,
+            [
+                "Away Odds Close",
+                "Away Odds",
+                "Away Odds Open"
+            ]
+        )
+
+        required_columns = [
+            "Date",
+            "Home Team",
+            "Away Team"
+        ]
+
+        for column in required_columns:
+            if column not in raw_df.columns:
+                return pd.DataFrame()
+
+        if home_odds_column is None or away_odds_column is None:
+            return pd.DataFrame()
+
+        odds_rows = []
+
+        for _, row in raw_df.iterrows():
+            home_team = row["Home Team"]
+            away_team = row["Away Team"]
+
+            if pd.isna(home_team) or pd.isna(away_team):
+                continue
+
+            match_name = f"{home_team} v {away_team}"
+            game_date = normalise_date_value(row["Date"])
+
+            home_odds = pd.to_numeric(
+                row[home_odds_column],
+                errors="coerce"
+            )
+
+            away_odds = pd.to_numeric(
+                row[away_odds_column],
+                errors="coerce"
+            )
+
+            if not pd.isna(home_odds):
+                odds_rows.append({
+                    "Game Date": game_date,
+                    "Match": match_name,
+                    "Team": home_team,
+                    "Decimal Odds": home_odds
+                })
+
+            if not pd.isna(away_odds):
+                odds_rows.append({
+                    "Game Date": game_date,
+                    "Match": match_name,
+                    "Team": away_team,
+                    "Decimal Odds": away_odds
+                })
+
+        return pd.DataFrame(odds_rows)
+
+    odds_df = pd.read_csv(uploaded_file)
+
+    if "Date" in odds_df.columns and "Game Date" not in odds_df.columns:
+        odds_df["Game Date"] = odds_df["Date"].apply(
+            normalise_date_value
+        )
+
+    return odds_df
+
+def find_historical_odds(odds_df, match_name, tipped_team, game_date=None):
+    if odds_df is None or odds_df.empty:
+        return None
+
+    required_columns = [
+        "Match",
+        "Team",
+        "Decimal Odds"
+    ]
+
+    for column in required_columns:
+        if column not in odds_df.columns:
+            return None
+
+    matched_rows = odds_df[
+        (odds_df["Match"].astype(str).str.strip() == str(match_name).strip())
+        & (odds_df["Team"].astype(str).str.strip() == str(tipped_team).strip())
+    ].copy()
+
+    if "Game Date" in odds_df.columns and game_date is not None:
+        normalised_game_date = normalise_date_value(game_date)
+
+        matched_rows["Game Date Clean"] = matched_rows["Game Date"].apply(
+            normalise_date_value
+        )
+
+        matched_rows = matched_rows[
+            matched_rows["Game Date Clean"] == normalised_game_date
+        ].copy()
+
+
+    if matched_rows.empty:
+        return None
+
+    matched_rows["Decimal Odds"] = pd.to_numeric(
+        matched_rows["Decimal Odds"],
+        errors="coerce"
+    )
+
+    matched_rows = matched_rows.dropna(
+        subset=["Decimal Odds"]
+    )
+
+    if matched_rows.empty:
+        return None
+
+    return matched_rows["Decimal Odds"].max()
+
+def calculate_true_value_backtest(backtest_df, min_edge_percent):
+    if backtest_df is None or backtest_df.empty:
+        return pd.DataFrame()
+
+    if "Historical Odds" not in backtest_df.columns:
+        return pd.DataFrame()
+
+    value_df = backtest_df.dropna(
+        subset=["Historical Odds"]
+    ).copy()
+
+    if value_df.empty:
+        return pd.DataFrame()
+
+    value_df["Model Probability"] = (
+        value_df["Confidence"]
+        / 100
+    )
+
+    value_df["Bookmaker Break Even %"] = (
+        1
+        / value_df["Historical Odds"]
+        * 100
+    )
+
+    value_df["Model Edge %"] = (
+        value_df["Confidence"]
+        - value_df["Bookmaker Break Even %"]
+    )
+
+    value_df = value_df[
+        value_df["Model Edge %"] >= min_edge_percent
+    ].copy()
+
+    if value_df.empty:
+        return pd.DataFrame()
+
+    value_df["True Value Profit/Loss"] = value_df.apply(
+        lambda row: calculate_profit_loss(
+            row["Stake"],
+            "WIN" if row["Correct"] == True else "LOSS",
+            row["Historical Odds"]
+        ),
+        axis=1
+    )
+
+    value_df["True Value Running Profit/Loss"] = (
+        value_df["True Value Profit/Loss"].cumsum()
+    )
+
+    return value_df
+
 def calculate_profit_loss(stake, result, decimal_odds):
     result = str(result).strip().upper()
 
     if stake <= 0:
+        return 0
+
+    if decimal_odds is None or pd.isna(decimal_odds):
         return 0
 
     if result == "WIN":
@@ -712,7 +936,7 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.4 Risk Rule Finder"
+        "V5.6 True Value Filter"
     )
 
 st.info(
@@ -1264,8 +1488,7 @@ st.subheader("🧪 V5 Historical Backtest")
 
 st.caption(
     "Backtests the SBT EDGE Elo model across completed historical AFL games. "
-    "V5.0 uses flat staking without historical bookmaker odds. "
-    "True EV/value backtesting comes next when historical odds are added."
+    "V5.6 adds true value filtering by comparing model probability against historical bookmaker break-even probability."
 )
 
 backtest_col1, backtest_col2, backtest_col3 = st.columns(3)
@@ -1296,6 +1519,12 @@ with backtest_col3:
         step=1.0
     )
 
+historical_odds_file = st.file_uploader(
+    "Upload Historical Odds File",
+    type=["csv", "xlsx"],
+    help="Optional. Upload historical odds CSV or the original AFL Excel results file."
+)
+
 if st.button("Run Historical Backtest"):
 
     if backtest_start_year > backtest_end_year:
@@ -1317,11 +1546,54 @@ if st.session_state.has_run_backtest:
 
     backtest_df = st.session_state.backtest_df
 
+    historical_odds_df = None
+
+    if historical_odds_file is not None:
+        historical_odds_df = prepare_historical_odds_file(
+            historical_odds_file
+        )
+
+        if historical_odds_df.empty:
+            st.warning(
+                "Historical odds file loaded, but no usable odds rows were found."
+            )
+        else:
+            st.success(
+                f"Loaded {len(historical_odds_df)} historical odds rows."
+            )
+
     if backtest_df is None or backtest_df.empty:
         st.warning("No completed historical games found.")
 
     else:
         total_backtest_bets = len(backtest_df)
+
+
+        if historical_odds_df is not None:
+            real_odds = []
+
+            for _, row in backtest_df.iterrows():
+                matched_odds = find_historical_odds(
+                    historical_odds_df,
+                    row["Match"],
+                    row["Tip"],
+                    row["Date"]
+                )
+
+                real_odds.append(matched_odds)
+
+            backtest_df["Historical Odds"] = real_odds
+
+            backtest_df["Real Odds Profit/Loss"] = backtest_df.apply(
+                lambda row: calculate_profit_loss(
+                    row["Stake"],
+                    "WIN" if row["Correct"] == True else "LOSS",
+                    row["Historical Odds"]
+                )
+                if pd.notna(row["Historical Odds"])
+                else None,
+                axis=1
+            )
 
         correct_bets = backtest_df[
             backtest_df["Correct"] == True
@@ -1353,6 +1625,32 @@ if st.session_state.has_run_backtest:
             "Profit/Loss"
         ].cumsum()
 
+        real_odds_df = pd.DataFrame()
+
+        if "Real Odds Profit/Loss" in backtest_df.columns:
+            real_odds_df = backtest_df.dropna(
+                subset=["Real Odds Profit/Loss"]
+            ).copy()
+
+        if not real_odds_df.empty:
+            real_odds_bets = len(real_odds_df)
+            real_odds_staked = real_odds_df["Stake"].sum()
+            real_odds_profit = real_odds_df["Real Odds Profit/Loss"].sum()
+
+            if real_odds_staked > 0:
+                real_odds_roi = (
+                    real_odds_profit
+                    / real_odds_staked
+                    * 100
+                )
+            else:
+                real_odds_roi = 0
+        else:
+            real_odds_bets = 0
+            real_odds_profit = 0
+            real_odds_roi = 0
+
+
         bt_col1, bt_col2, bt_col3, bt_col4 = st.columns(4)
 
         with bt_col1:
@@ -1378,6 +1676,152 @@ if st.session_state.has_run_backtest:
                 "Simulated ROI",
                 f"{backtest_roi:.1f}%"
             )
+
+
+        if historical_odds_df is not None:
+
+            st.subheader("💰 Historical Odds Backtest")
+
+            odds_col1, odds_col2, odds_col3 = st.columns(3)
+
+            with odds_col1:
+                st.metric(
+                    "Matched Odds Bets",
+                    real_odds_bets
+                )
+
+            with odds_col2:
+                st.metric(
+                    "Real Odds Profit / Loss",
+                    f"${real_odds_profit:.2f}"
+                )
+
+            with odds_col3:
+                st.metric(
+                    "Real Odds ROI",
+                    f"{real_odds_roi:.1f}%"
+                )
+
+            if real_odds_bets == 0:
+                st.warning(
+                    "No historical odds matched. Check that your CSV columns are Match, Team, and Decimal Odds."
+                )
+
+            # --------------------------
+            # TRUE VALUE FILTER
+            # --------------------------
+
+            st.subheader("💎 V5.6 True Value Filter")
+
+            min_edge_percent = st.selectbox(
+                "Only count bets where model edge is at least",
+                options=[0, 2, 4, 6, 8, 10],
+                index=1
+            )
+
+            true_value_df = calculate_true_value_backtest(
+                backtest_df,
+                min_edge_percent
+            )
+
+            if true_value_df.empty:
+                st.warning(
+                    "No true value bets found for this edge threshold."
+                )
+
+            else:
+                true_value_bets = len(true_value_df)
+
+                true_value_wins = len(
+                    true_value_df[
+                        true_value_df["Correct"] == True
+                    ]
+                )
+
+                true_value_accuracy = (
+                    true_value_wins
+                    / true_value_bets
+                    * 100
+                )
+
+                true_value_staked = true_value_df["Stake"].sum()
+                true_value_profit = true_value_df[
+                    "True Value Profit/Loss"
+                ].sum()
+
+                if true_value_staked > 0:
+                    true_value_roi = (
+                        true_value_profit
+                        / true_value_staked
+                        * 100
+                    )
+                else:
+                    true_value_roi = 0
+
+                value_col1, value_col2, value_col3, value_col4 = st.columns(4)
+
+                with value_col1:
+                    st.metric(
+                        "True Value Bets",
+                        true_value_bets
+                    )
+
+                with value_col2:
+                    st.metric(
+                        "True Value Accuracy",
+                        f"{true_value_accuracy:.1f}%"
+                    )
+
+                with value_col3:
+                    st.metric(
+                        "True Value Profit / Loss",
+                        f"${true_value_profit:.2f}"
+                    )
+
+                with value_col4:
+                    st.metric(
+                        "True Value ROI",
+                        f"{true_value_roi:.1f}%"
+                    )
+
+                st.line_chart(
+                    true_value_df[
+                        [
+                            "True Value Running Profit/Loss"
+                        ]
+                    ],
+                    height=320
+                )
+
+                st.subheader("True Value Bet Details")
+
+                st.dataframe(
+                    true_value_df[
+                        [
+                            "Season",
+                            "Round",
+                            "Date",
+                            "Match",
+                            "Tip",
+                            "Winner",
+                            "Correct",
+                            "Confidence",
+                            "Historical Odds",
+                            "Bookmaker Break Even %",
+                            "Model Edge %",
+                            "True Value Profit/Loss"
+                        ]
+                    ],
+                    width="stretch",
+                    hide_index=True
+                )
+
+                st.download_button(
+                    label="Download True Value Backtest CSV",
+                    data=true_value_df.to_csv(index=False),
+                    file_name=f"sbt_edge_v56_true_value_{min_edge_percent}_edge.csv",
+                    mime="text/csv"
+                )    
 
         st.subheader("Backtest Running Profit/Loss")
 
