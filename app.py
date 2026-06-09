@@ -519,6 +519,65 @@ def calculate_true_value_backtest(backtest_df, min_edge_percent):
 
     return value_df
 
+def build_edge_threshold_summary(backtest_df, edge_thresholds):
+    rows = []
+
+    for threshold in edge_thresholds:
+        edge_df = calculate_true_value_backtest(
+            backtest_df,
+            threshold
+        )
+
+        if edge_df.empty:
+            rows.append({
+                "Edge Threshold": f"{threshold}%+",
+                "Bets": 0,
+                "Wins": 0,
+                "Accuracy %": 0,
+                "Total Stake": 0,
+                "Profit/Loss": 0,
+                "ROI %": 0
+            })
+            continue
+
+        bets = len(edge_df)
+
+        wins = len(
+            edge_df[
+                edge_df["Correct"] == True
+            ]
+        )
+
+        accuracy = (
+            wins
+            / bets
+            * 100
+        )
+
+        total_stake = edge_df["Stake"].sum()
+        profit_loss = edge_df["True Value Profit/Loss"].sum()
+
+        if total_stake > 0:
+            roi = (
+                profit_loss
+                / total_stake
+                * 100
+            )
+        else:
+            roi = 0
+
+        rows.append({
+            "Edge Threshold": f"{threshold}%+",
+            "Bets": bets,
+            "Wins": wins,
+            "Accuracy %": round(accuracy, 1),
+            "Total Stake": round(total_stake, 2),
+            "Profit/Loss": round(profit_loss, 2),
+            "ROI %": round(roi, 1)
+        })
+
+    return pd.DataFrame(rows)
+
 def calculate_profit_loss(stake, result, decimal_odds):
     result = str(result).strip().upper()
 
@@ -936,13 +995,12 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.6 True Value Filter"
+        "V5.7 Edge Optimiser"
     )
 
-st.info(
-    "V3 adds bookmaker odds comparison using manual input or auto-fetched AFL odds. "
-    "The app calculates break-even probability, model edge, expected ROI, value rating, "
-    "and best available bookmaker price where odds data is available."
+st.caption(
+    "Backtests the SBT EDGE Elo model across completed historical AFL games. "
+    "V5.7 automatically compares true value edge thresholds using historical bookmaker odds."
 )
 # ==========================
 # ROUND SELECTOR
@@ -1822,6 +1880,142 @@ if st.session_state.has_run_backtest:
                     file_name=f"sbt_edge_v56_true_value_{min_edge_percent}_edge.csv",
                     mime="text/csv"
                 )    
+
+            # --------------------------
+            # EDGE THRESHOLD OPTIMISER
+            # --------------------------
+
+            st.subheader("⚙️ V5.7 Edge Threshold Optimiser")
+
+            edge_thresholds = [
+                0,
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                15,
+                20
+            ]
+
+            edge_summary = build_edge_threshold_summary(
+                backtest_df,
+                edge_thresholds
+            )
+
+            st.dataframe(
+                edge_summary,
+                width="stretch",
+                hide_index=True
+            )
+
+            valid_edge_summary = edge_summary[
+                edge_summary["Bets"] > 0
+            ].copy()
+
+            if valid_edge_summary.empty:
+                st.warning(
+                    "No edge threshold rules available to optimise."
+                )
+
+            else:
+                best_edge_roi_rule = valid_edge_summary.sort_values(
+                    "ROI %",
+                    ascending=False
+                ).iloc[0]
+
+                best_edge_profit_rule = valid_edge_summary.sort_values(
+                    "Profit/Loss",
+                    ascending=False
+                ).iloc[0]
+
+                edge_balanced_summary = valid_edge_summary.copy()
+
+                max_profit = edge_balanced_summary["Profit/Loss"].max()
+                max_bets = edge_balanced_summary["Bets"].max()
+
+                if max_profit > 0:
+                    edge_balanced_summary["Profit Score"] = (
+                        edge_balanced_summary["Profit/Loss"]
+                        / max_profit
+                        * 100
+                    )
+                else:
+                    edge_balanced_summary["Profit Score"] = 0
+
+                if max_bets > 0:
+                    edge_balanced_summary["Volume Score"] = (
+                        edge_balanced_summary["Bets"]
+                        / max_bets
+                        * 100
+                    )
+                else:
+                    edge_balanced_summary["Volume Score"] = 0
+
+                edge_balanced_summary["Balanced Score"] = (
+                    edge_balanced_summary["ROI %"] * 0.35
+                    + edge_balanced_summary["Accuracy %"] * 0.30
+                    + edge_balanced_summary["Profit Score"] * 0.20
+                    + edge_balanced_summary["Volume Score"] * 0.15
+                ).round(1)
+
+                best_edge_balanced_rule = edge_balanced_summary.sort_values(
+                    "Balanced Score",
+                    ascending=False
+                ).iloc[0]
+
+                edge_col1, edge_col2, edge_col3 = st.columns(3)
+
+                with edge_col1:
+                    st.metric(
+                        "Best Edge ROI Rule",
+                        best_edge_roi_rule["Edge Threshold"],
+                        f'{best_edge_roi_rule["ROI %"]}% ROI'
+                    )
+
+                with edge_col2:
+                    st.metric(
+                        "Best Edge Profit Rule",
+                        best_edge_profit_rule["Edge Threshold"],
+                        f'${best_edge_profit_rule["Profit/Loss"]:.2f}'
+                    )
+
+                with edge_col3:
+                    st.metric(
+                        "Best Balanced Edge Rule",
+                        best_edge_balanced_rule["Edge Threshold"],
+                        f'{best_edge_balanced_rule["Balanced Score"]:.1f} score'
+                    )
+
+                st.subheader("ROI by Edge Threshold")
+
+                st.bar_chart(
+                    edge_summary[
+                        [
+                            "Edge Threshold",
+                            "ROI %"
+                        ]
+                    ],
+                    x="Edge Threshold",
+                    y="ROI %",
+                    height=360
+                )
+
+                st.info(
+                    f'SBT EDGE best balanced true value rule: '
+                    f'{best_edge_balanced_rule["Edge Threshold"]} model edge '
+                    f'with {best_edge_balanced_rule["Bets"]} bets, '
+                    f'{best_edge_balanced_rule["Accuracy %"]}% accuracy, '
+                    f'and {best_edge_balanced_rule["ROI %"]}% real-odds ROI.'
+                )
+
+                st.download_button(
+                    label="Download Edge Threshold Optimiser CSV",
+                    data=edge_balanced_summary.to_csv(index=False),
+                    file_name="sbt_edge_v57_edge_threshold_optimiser.csv",
+                    mime="text/csv"
+                )
 
         st.subheader("Backtest Running Profit/Loss")
 
