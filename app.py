@@ -57,43 +57,150 @@ TEAM_NAME_MAP = {
 # ==========================
 
 def load_css():
-    with open("sbt_edge_logo.png", "rb") as image_file:
-        encoded = base64.b64encode(image_file.read()).decode()
+    """Premium SBT Edge styling with a safe fallback if the logo file is missing."""
+    background_css = "background: radial-gradient(circle at top, rgba(0,163,255,0.18), transparent 34%), linear-gradient(135deg, #020814 0%, #06152A 48%, #020814 100%);"
+
+    logo_path = "sbt_edge_logo.png"
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode()
+        background_css = f"""
+            background-image:
+                linear-gradient(rgba(2,8,18,0.88), rgba(2,8,18,0.94)),
+                url("data:image/png;base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        """
 
     st.markdown(
         f"""
         <style>
         .stApp {{
-            background-image:
-                linear-gradient(rgba(2,8,18,0.88), rgba(2,8,18,0.92)),
-                url("data:image/png;base64,{encoded}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
+            {background_css}
+            color: #f4fbff;
+        }}
+
+        section[data-testid="stSidebar"] {{
+            background: rgba(2, 8, 18, 0.96);
+            border-right: 1px solid rgba(0, 163, 255, 0.24);
         }}
 
         [data-testid="stMetric"] {{
-            background: rgba(10, 16, 28, 0.80);
-            border: 1px solid rgba(0, 163, 255, 0.45);
+            background: linear-gradient(180deg, rgba(10, 24, 42, 0.92), rgba(6, 14, 26, 0.88));
+            border: 1px solid rgba(0, 190, 255, 0.42);
             border-radius: 18px;
             padding: 22px;
-            box-shadow: 0 0 18px rgba(0,163,255,0.12);
+            box-shadow: 0 0 20px rgba(0,163,255,0.13), inset 0 0 18px rgba(0,163,255,0.04);
+        }}
+
+        [data-testid="stMetricLabel"] {{
+            color: #8edfff !important;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }}
 
         .stButton button {{
-            background: linear-gradient(90deg, #0077ff, #00aaff);
+            background: linear-gradient(90deg, #006eff, #00c8ff);
             color: white;
             border-radius: 12px;
-            border: 1px solid #00aaff;
-            font-weight: bold;
+            border: 1px solid #00c8ff;
+            font-weight: 800;
             padding: 0.7rem 1.4rem;
             box-shadow: 0 0 16px rgba(0,163,255,0.25);
         }}
 
         .stButton button:hover {{
-            border: 1px solid #66ccff;
-            box-shadow: 0 0 25px rgba(0,163,255,0.55);
+            border: 1px solid #b7efff;
+            box-shadow: 0 0 28px rgba(0,200,255,0.58);
         }}
+
+        .sbt-mobile-card {{
+            background: linear-gradient(180deg, rgba(9, 22, 40, 0.96), rgba(4, 10, 20, 0.94));
+            border: 1px solid rgba(0, 200, 255, 0.36);
+            border-radius: 22px;
+            padding: 18px 18px 14px 18px;
+            margin: 12px 0;
+            box-shadow: 0 0 24px rgba(0,163,255,0.12);
+        }}
+
+        .sbt-card-title {{
+            color: #ffffff;
+            font-size: 1.15rem;
+            font-weight: 900;
+            margin-bottom: 6px;
+        }}
+
+        .sbt-card-sub {{
+            color: #8edfff;
+            font-size: 0.92rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }}
+
+        .sbt-chip {{
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 4px 4px 0 0;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 200, 255, 0.36);
+            background: rgba(0, 163, 255, 0.10);
+            color: #e8faff;
+            font-size: 0.82rem;
+            font-weight: 800;
+        }}
+
+        .sbt-action-bet {{ color: #65ffb7; }}
+        .sbt-action-watch {{ color: #ffd166; }}
+        .sbt-action-pass {{ color: #ff7b7b; }}
+
+        @media (max-width: 768px) {{
+            .block-container {{
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+                padding-top: 1rem;
+            }}
+
+            h1 {{
+                font-size: 3.2rem !important;
+            }}
+
+            [data-testid="stMetric"] {{
+                padding: 14px;
+                border-radius: 14px;
+            }}
+
+            div[data-testid="stHorizontalBlock"] {{
+                gap: 0.5rem;
+            }}
+        }}
+
+                .sbt-info-card {{
+            background: rgba(3, 18, 36, 0.86);
+            border: 1px solid rgba(0, 163, 255, 0.55);
+            border-radius: 18px;
+            padding: 24px;
+            min-height: 120px;
+            box-shadow: 0 0 22px rgba(0, 163, 255, 0.18);
+        }}
+
+        .sbt-info-card .sbt-card-label {{
+            color: #7edcff;
+            font-size: 13px;
+            letter-spacing: 1.6px;
+            font-weight: 700;
+            margin-bottom: 14px;
+        }}
+
+        .sbt-info-card .sbt-card-value {{
+            color: white;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.15;
+            word-break: normal;
+            white-space: normal;
+        }}        
         </style>
         """,
         unsafe_allow_html=True
@@ -659,6 +766,50 @@ def build_edge_confidence_combo_summary(backtest_df, combo_rules):
 
     return pd.DataFrame(rows)
 
+def recommend_betting_rule(combo_summary):
+    if combo_summary is None or combo_summary.empty:
+        return None
+
+    valid_rules = combo_summary[
+        combo_summary["Bets"] > 0
+    ].copy()
+
+    if valid_rules.empty:
+        return None
+
+    max_profit = valid_rules["Profit/Loss"].max()
+    max_bets = valid_rules["Bets"].max()
+
+    if max_profit > 0:
+        valid_rules["Profit Score"] = (
+            valid_rules["Profit/Loss"]
+            / max_profit
+            * 100
+        )
+    else:
+        valid_rules["Profit Score"] = 0
+
+    if max_bets > 0:
+        valid_rules["Volume Score"] = (
+            valid_rules["Bets"]
+            / max_bets
+            * 100
+        )
+    else:
+        valid_rules["Volume Score"] = 0
+
+    valid_rules["Recommendation Score"] = (
+        valid_rules["ROI %"] * 0.35
+        + valid_rules["Accuracy %"] * 0.25
+        + valid_rules["Profit Score"] * 0.25
+        + valid_rules["Volume Score"] * 0.15
+    ).round(1)
+
+    return valid_rules.sort_values(
+        "Recommendation Score",
+        ascending=False
+    ).iloc[0]
+
 def calculate_profit_loss(stake, result, decimal_odds):
     result = str(result).strip().upper()
 
@@ -733,6 +884,71 @@ def multi_eligible(value_status, risk):
         return "YES"
 
     return "NO"
+
+def recommended_units(edge_percent, expected_roi_percent, confidence, risk):
+    """Conservative staking guide in units. This is deliberately capped for bankroll protection."""
+    if edge_percent < 1 or expected_roi_percent < 1:
+        return 0.0
+
+    if risk == "HIGH":
+        risk_multiplier = 0.35
+    elif risk == "MEDIUM":
+        risk_multiplier = 0.70
+    else:
+        risk_multiplier = 1.00
+
+    edge_component = min(edge_percent / 8, 2.0)
+    confidence_component = max(0.5, min(confidence / 70, 1.25))
+    roi_component = max(0.5, min(expected_roi_percent / 10, 1.50))
+
+    units = edge_component * confidence_component * roi_component * risk_multiplier
+    units = min(units, 2.0)
+
+    if units < 0.25:
+        return 0.0
+
+    return round(units * 2) / 2
+
+
+def recommendation_action(value_status, risk, edge_percent, expected_roi_percent, confidence):
+    if value_status == "Strong Value" and risk != "HIGH" and edge_percent >= 8 and expected_roi_percent >= 8 and confidence >= 58:
+        return "BET"
+
+    if value_status in ["Strong Value", "Value"] and risk != "HIGH" and edge_percent >= 4 and expected_roi_percent >= 4:
+        return "SMALL BET"
+
+    if value_status in ["Value", "Small Edge"] or edge_percent > 0:
+        return "WATCH"
+
+    return "PASS"
+
+
+def action_class(action):
+    if action in ["BET", "SMALL BET"]:
+        return "sbt-action-bet"
+    if action == "WATCH":
+        return "sbt-action-watch"
+    return "sbt-action-pass"
+
+
+def render_mobile_tip_card(row):
+    action = row.get("Action", "WATCH")
+    css_class = action_class(action)
+    st.markdown(
+        f"""
+        <div class="sbt-mobile-card">
+            <div class="sbt-card-title">{row['Final Tip']} — {row['Predicted Margin']}</div>
+            <div class="sbt-card-sub">{row['Match']}</div>
+            <span class="sbt-chip {css_class}">{action}</span>
+            <span class="sbt-chip">Odds ${row['Bookmaker Odds']:.2f}</span>
+            <span class="sbt-chip">Edge {row['Model Edge %']}%</span>
+            <span class="sbt-chip">ROI {row['Expected ROI %']}%</span>
+            <span class="sbt-chip">Risk {row['Risk']}</span>
+            <span class="sbt-chip">Stake {row['Recommended Units']}u / ${row['Recommended Stake']:.2f}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 def find_best_odds_for_tip(odds_data, match_name, tipped_team):
     possible_names = TEAM_NAME_MAP.get(
@@ -1076,7 +1292,7 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.8 Combo Optimiser"
+        "V5.9 Rule Recommendation"
     )
 
 st.caption(
@@ -1207,6 +1423,7 @@ if uploaded_tracker is not None:
             "Value Rating",
             "Multi Eligible",
             "Risk",
+            "Action",
             "Recommended Units",
             "Recommended Stake"
         ]
@@ -2286,6 +2503,69 @@ if st.session_state.has_run_backtest:
                     mime="text/csv"
                 )
 
+                # --------------------------
+                # BETTING RULE RECOMMENDATION ENGINE
+                # --------------------------
+
+                st.subheader("🧠 V5.9 Betting Rule Recommendation Engine")
+
+                recommended_rule = recommend_betting_rule(
+                    combo_summary
+                )
+
+                if recommended_rule is None:
+                    st.warning(
+                        "No betting rule recommendation available."
+                    )
+
+                else:
+                    rec_col1, rec_col2, rec_col3, rec_col4 = st.columns(4)
+
+                    with rec_col1:
+                        st.markdown(
+                            f"""
+                            <div class="sbt-info-card">
+                                <div class="sbt-card-label">RECOMMENDED RULE</div>
+                                <div class="sbt-card-value">{recommended_rule["Rule"]}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                    with rec_col2:
+                        st.metric(
+                            "Historical Bets",
+                            int(recommended_rule["Bets"])
+                        )
+
+                    with rec_col3:
+                        st.metric(
+                            "Real Odds ROI",
+                            f'{recommended_rule["ROI %"]}%'
+                        )
+
+                    with rec_col4:
+                        st.metric(
+                            "Recommendation Score",
+                            f'{recommended_rule["Recommendation Score"]}/100'
+                        )
+
+                    st.success(
+                        f'SBT EDGE recommended betting rule: '
+                        f'{recommended_rule["Rule"]}. '
+                        f'Historically this produced '
+                        f'{int(recommended_rule["Bets"])} bets, '
+                        f'{recommended_rule["Accuracy %"]}% accuracy, '
+                        f'${recommended_rule["Profit/Loss"]:.2f} profit/loss, '
+                        f'and {recommended_rule["ROI %"]}% real-odds ROI.'
+                    )
+
+                    st.info(
+                        "Suggested use: only bet when the live predictor finds a market price "
+                        "that meets or beats this historical edge/confidence rule. "
+                        "Avoid betting tips based on confidence alone."
+                    )
+
         st.subheader("Backtest Running Profit/Loss")
 
         st.line_chart(
@@ -2927,6 +3207,31 @@ if st.session_state.has_run_predictor:
         df["Expected ROI %"] = roi_list
         df["Value Rating"] = value_list
         df["Multi Eligible"] = multi_list
+        recommended_units_list = []
+        action_list = []
+
+        for _, row in df.iterrows():
+            units = recommended_units(
+                row["Model Edge %"],
+                row["Expected ROI %"],
+                row["Elo Confidence"],
+                row["Risk"]
+            )
+
+            action = recommendation_action(
+                row["Value Rating"],
+                row["Risk"],
+                row["Model Edge %"],
+                row["Expected ROI %"],
+                row["Elo Confidence"]
+            )
+
+            recommended_units_list.append(units)
+            action_list.append(action)
+
+        df["Recommended Units"] = recommended_units_list
+        df["Recommended Stake"] = (df["Recommended Units"] * unit_size).round(2)
+        df["Action"] = action_list
 
         # --------------------------
         # BEST PICK OF THE ROUND
@@ -2975,6 +3280,84 @@ if st.session_state.has_run_predictor:
             st.warning("No value picks found from the entered odds.")
 
         # --------------------------
+        # SBT EDGE FINDER / RECOMMENDATION ENGINE
+        # --------------------------
+
+        st.subheader("⚡ SBT Edge Finder")
+
+        action_priority = {
+            "BET": 1,
+            "SMALL BET": 2,
+            "WATCH": 3,
+            "PASS": 4
+        }
+
+        edge_finder = df.copy()
+        edge_finder["Action Rank"] = edge_finder["Action"].map(action_priority).fillna(99)
+        edge_finder = edge_finder.sort_values(
+            ["Action Rank", "Expected ROI %", "Model Edge %", "Elo Confidence"],
+            ascending=[True, False, False, False]
+        )
+
+        edge_display = edge_finder[
+            [
+                "Action",
+                "Final Tip",
+                "Match",
+                "Predicted Margin",
+                "Bookmaker Odds",
+                "Best Bookmaker",
+                "Elo Confidence",
+                "Model Edge %",
+                "Expected ROI %",
+                "Value Rating",
+                "Risk",
+                "Recommended Units",
+                "Recommended Stake"
+            ]
+        ].copy()
+
+        st.dataframe(
+            edge_display,
+            width="stretch",
+            hide_index=True
+        )
+
+        bet_count = len(edge_display[edge_display["Action"].isin(["BET", "SMALL BET"])])
+        watch_count = len(edge_display[edge_display["Action"] == "WATCH"])
+        pass_count = len(edge_display[edge_display["Action"] == "PASS"])
+        total_recommended_stake = edge_display["Recommended Stake"].sum()
+
+        rec_col1, rec_col2, rec_col3, rec_col4 = st.columns(4)
+
+        with rec_col1:
+            st.metric("Recommended Bets", bet_count)
+
+        with rec_col2:
+            st.metric("Watchlist", watch_count)
+
+        with rec_col3:
+            st.metric("Pass", pass_count)
+
+        with rec_col4:
+            st.metric("Total Recommended Stake", f"${total_recommended_stake:.2f}")
+
+        st.caption(
+            "Staking is intentionally conservative: the app caps suggested stake at 2 units and reduces exposure on high-risk games."
+        )
+
+        # --------------------------
+        # MOBILE DASHBOARD
+        # --------------------------
+
+        st.subheader("📱 Mobile Dashboard")
+
+        mobile_rows = edge_finder.head(8)
+
+        for _, mobile_row in mobile_rows.iterrows():
+            render_mobile_tip_card(mobile_row)
+
+        # --------------------------
         # VALUE BETS TABLE
         # --------------------------
 
@@ -3007,7 +3390,10 @@ if st.session_state.has_run_predictor:
                     "Expected ROI %",
                     "Value Rating",
                     "Multi Eligible",
-                    "Risk"
+                    "Risk",
+                    "Action",
+                    "Recommended Units",
+                    "Recommended Stake"
                 ]
             ]
 
@@ -3305,8 +3691,8 @@ if st.session_state.has_run_predictor:
 
         bet_tracker["Round"] = round_number
         bet_tracker["Bet Type"] = "H2H"
-        bet_tracker["Recommended Units"] = 1
-        bet_tracker["Recommended Stake"] = unit_size
+        # Keep the recommendation engine stake from the live edge finder.
+        # Manual stake remains blank so you can override it in the tracker after export.
         bet_tracker["Stake"] = ""
         bet_tracker["Result"] = ""
         bet_tracker["Profit/Loss"] = ""
@@ -3328,6 +3714,7 @@ if st.session_state.has_run_predictor:
                 "Value Rating",
                 "Multi Eligible",
                 "Risk",
+                "Action",
                 "Recommended Units",
                 "Recommended Stake",
                 "Stake",
