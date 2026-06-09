@@ -703,7 +703,7 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.2 Confidence Rule"
+        "V5.3 Best Rule Finder"
     )
 
 st.info(
@@ -1487,6 +1487,78 @@ if st.session_state.has_run_backtest:
             hide_index=True
         )
 
+# --------------------------
+# BEST CONFIDENCE RULE FINDER
+# --------------------------
+
+        st.subheader("🏆 Best Confidence Rule Finder")
+
+        if not confidence_summary.empty:
+
+            best_roi_rule = confidence_summary.sort_values(
+                "ROI %",
+                ascending=False
+            ).iloc[0]
+
+            best_profit_rule = confidence_summary.sort_values(
+                "Profit/Loss",
+                ascending=False
+            ).iloc[0]
+
+            best_accuracy_rule = confidence_summary.sort_values(
+                "Accuracy %",
+                ascending=False
+            ).iloc[0]
+
+            balanced_summary = confidence_summary.copy()
+
+            balanced_summary["Balance Score"] = (
+                balanced_summary["Accuracy %"]
+                + balanced_summary["ROI %"]
+            )
+
+            best_balanced_rule = balanced_summary.sort_values(
+                "Balance Score",
+                ascending=False
+            ).iloc[0]
+
+            best_col1, best_col2, best_col3, best_col4 = st.columns(4)
+
+            with best_col1:
+                st.metric(
+                    "Best ROI Rule",
+                    best_roi_rule["Confidence Threshold"],
+                    f'{best_roi_rule["ROI %"]}% ROI'
+                )
+
+            with best_col2:
+                st.metric(
+                    "Best Profit Rule",
+                    best_profit_rule["Confidence Threshold"],
+                    f'${best_profit_rule["Profit/Loss"]:.2f}'
+                )
+
+            with best_col3:
+                st.metric(
+                    "Best Accuracy Rule",
+                    best_accuracy_rule["Confidence Threshold"],
+                    f'{best_accuracy_rule["Accuracy %"]}%'
+                )
+
+            with best_col4:
+                st.metric(
+                    "Best Balanced Rule",
+                    best_balanced_rule["Confidence Threshold"],
+                    f'{best_balanced_rule["Balance Score"]:.1f} score'
+                )
+
+            st.info(
+                f'SBT EDGE historical sweet spot: '
+                f'{best_balanced_rule["Confidence Threshold"]} confidence '
+                f'with {best_balanced_rule["Accuracy %"]}% accuracy '
+                f'and {best_balanced_rule["ROI %"]}% simulated ROI.'
+            )
+
         st.subheader("ROI by Confidence Threshold")
 
         st.bar_chart(
@@ -1501,9 +1573,9 @@ if st.session_state.has_run_backtest:
             height=320
         )
 
-# --------------------------
-# MINIMUM CONFIDENCE BETTING RULE
-# --------------------------
+        # --------------------------
+        # MINIMUM CONFIDENCE BETTING RULE
+        # --------------------------
 
         st.subheader("🎯 Minimum Confidence Betting Rule")
 
