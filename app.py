@@ -236,6 +236,14 @@ def risk_rating(elo_tip, squiggle_tip, confidence):
 
     return "HIGH"
 
+def backtest_risk_rating(confidence):
+    if confidence >= 75:
+        return "LOW"
+
+    if confidence >= 60:
+        return "MEDIUM"
+
+    return "HIGH"
 
 def calculate_edge_score(confidence, risk):
     if risk == "LOW":
@@ -652,6 +660,7 @@ def run_historical_backtest(start_year, end_year, stake):
                 "Winner": winner,
                 "Correct": correct,
                 "Confidence": round(confidence, 1),
+                "Risk": backtest_risk_rating(confidence),
                 "Stake": stake,
                 "Profit/Loss": round(profit_loss, 2)
             })
@@ -703,7 +712,7 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.3 Best Rule Finder"
+        "V5.4 Risk Rule Finder"
     )
 
 st.info(
@@ -1572,7 +1581,180 @@ if st.session_state.has_run_backtest:
             y="ROI %",
             height=320
         )
+        
+        # --------------------------
+        # RISK + CONFIDENCE RULE FINDER
+        # --------------------------
 
+        st.subheader("🧠 Risk + Confidence Rule Finder")
+
+        rule_sets = [
+            {
+                "Rule": "55%+ Any Risk",
+                "Min Confidence": 55,
+                "Allowed Risk": ["LOW", "MEDIUM", "HIGH"]
+            },
+            {
+                "Rule": "60%+ Any Risk",
+                "Min Confidence": 60,
+                "Allowed Risk": ["LOW", "MEDIUM", "HIGH"]
+            },
+            {
+                "Rule": "70%+ Any Risk",
+                "Min Confidence": 70,
+                "Allowed Risk": ["LOW", "MEDIUM", "HIGH"]
+            },
+            {
+                "Rule": "75%+ Any Risk",
+                "Min Confidence": 75,
+                "Allowed Risk": ["LOW", "MEDIUM", "HIGH"]
+            },
+            {
+                "Rule": "60%+ LOW/MEDIUM Risk",
+                "Min Confidence": 60,
+                "Allowed Risk": ["LOW", "MEDIUM"]
+            },
+            {
+                "Rule": "70%+ LOW/MEDIUM Risk",
+                "Min Confidence": 70,
+                "Allowed Risk": ["LOW", "MEDIUM"]
+            },
+            {
+                "Rule": "75%+ LOW Risk",
+                "Min Confidence": 75,
+                "Allowed Risk": ["LOW"]
+            }
+        ]
+
+        rule_rows = []
+
+        for rule in rule_sets:
+            rule_df = backtest_df[
+                (backtest_df["Confidence"] >= rule["Min Confidence"])
+                & (backtest_df["Risk"].isin(rule["Allowed Risk"]))
+            ].copy()
+
+            if rule_df.empty:
+                rule_rows.append({
+                    "Rule": rule["Rule"],
+                    "Bets": 0,
+                    "Wins": 0,
+                    "Accuracy %": 0,
+                    "Total Stake": 0,
+                    "Profit/Loss": 0,
+                    "ROI %": 0
+                })
+                continue
+
+            rule_bets = len(rule_df)
+
+            rule_wins = len(
+                rule_df[
+                    rule_df["Correct"] == True
+                ]
+            )
+
+            rule_accuracy = (
+                rule_wins
+                / rule_bets
+                * 100
+            )
+
+            rule_total_stake = rule_df["Stake"].sum()
+            rule_profit = rule_df["Profit/Loss"].sum()
+
+            if rule_total_stake > 0:
+                rule_roi = (
+                    rule_profit
+                    / rule_total_stake
+                    * 100
+                )
+            else:
+                rule_roi = 0
+
+            rule_rows.append({
+                "Rule": rule["Rule"],
+                "Bets": rule_bets,
+                "Wins": rule_wins,
+                "Accuracy %": round(rule_accuracy, 1),
+                "Total Stake": round(rule_total_stake, 2),
+                "Profit/Loss": round(rule_profit, 2),
+                "ROI %": round(rule_roi, 1)
+            })
+
+        rule_summary = pd.DataFrame(rule_rows)
+
+        st.dataframe(
+            rule_summary,
+            width="stretch",
+            hide_index=True
+        )
+
+        best_risk_roi_rule = rule_summary.sort_values(
+            "ROI %",
+            ascending=False
+        ).iloc[0]
+
+        best_risk_profit_rule = rule_summary.sort_values(
+            "Profit/Loss",
+            ascending=False
+        ).iloc[0]
+
+        risk_balanced_summary = rule_summary.copy()
+
+        risk_balanced_summary["Balance Score"] = (
+            risk_balanced_summary["Accuracy %"]
+            + risk_balanced_summary["ROI %"]
+        )
+
+        best_risk_balanced_rule = risk_balanced_summary.sort_values(
+            "Balance Score",
+            ascending=False
+        ).iloc[0]
+
+        risk_col1, risk_col2, risk_col3 = st.columns(3)
+
+        with risk_col1:
+            st.metric(
+                "Best Risk ROI Rule",
+                best_risk_roi_rule["Rule"],
+                f'{best_risk_roi_rule["ROI %"]}% ROI'
+            )
+
+        with risk_col2:
+            st.metric(
+                "Best Risk Profit Rule",
+                best_risk_profit_rule["Rule"],
+                f'${best_risk_profit_rule["Profit/Loss"]:.2f}'
+            )
+
+        with risk_col3:
+            st.metric(
+                "Best Risk Balanced Rule",
+                best_risk_balanced_rule["Rule"],
+                f'{best_risk_balanced_rule["Balance Score"]:.1f} score'
+            )
+
+        st.subheader("ROI by Risk + Confidence Rule")
+
+        st.bar_chart(
+            rule_summary[
+                [
+                    "Rule",
+                    "ROI %"
+                ]
+            ],
+            x="Rule",
+            y="ROI %",
+            height=360
+        )
+
+        st.info(
+            f'SBT EDGE combined rule sweet spot: '
+            f'{best_risk_balanced_rule["Rule"]} '
+            f'with {best_risk_balanced_rule["Accuracy %"]}% accuracy '
+            f'and {best_risk_balanced_rule["ROI %"]}% simulated ROI.'
+        )
         # --------------------------
         # MINIMUM CONFIDENCE BETTING RULE
         # --------------------------
