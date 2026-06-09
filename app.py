@@ -703,7 +703,7 @@ with col3:
 with col4:
     st.metric(
         "Model Version",
-        "V5.1 Confidence Backtest"
+        "V5.2 Confidence Rule"
     )
 
 st.info(
@@ -737,6 +737,12 @@ if "predictions_df" not in st.session_state:
 
 if "has_run_predictor" not in st.session_state:
     st.session_state.has_run_predictor = False
+
+if "backtest_df" not in st.session_state:
+    st.session_state.backtest_df = None
+
+if "has_run_backtest" not in st.session_state:
+    st.session_state.has_run_backtest = False
 
 # ==========================
 # RESULTS / ROI TRACKER
@@ -1294,82 +1300,310 @@ if st.button("Run Historical Backtest"):
                 backtest_stake
             )
 
-        if backtest_df.empty:
-            st.warning("No completed historical games found.")
+        st.session_state.backtest_df = backtest_df
+        st.session_state.has_run_backtest = True
 
+
+if st.session_state.has_run_backtest:
+
+    backtest_df = st.session_state.backtest_df
+
+    if backtest_df is None or backtest_df.empty:
+        st.warning("No completed historical games found.")
+
+    else:
+        total_backtest_bets = len(backtest_df)
+
+        correct_bets = backtest_df[
+            backtest_df["Correct"] == True
+        ]
+
+        accuracy = (
+            len(correct_bets)
+            / total_backtest_bets
+            * 100
+        )
+
+        total_backtest_staked = backtest_df["Stake"].sum()
+        total_backtest_profit = backtest_df["Profit/Loss"].sum()
+
+        if total_backtest_staked > 0:
+            backtest_roi = (
+                total_backtest_profit
+                / total_backtest_staked
+                * 100
+            )
         else:
-            total_backtest_bets = len(backtest_df)
-            correct_bets = backtest_df[
-                backtest_df["Correct"] == True
-            ]
+            backtest_roi = 0
 
-            accuracy = (
-                len(correct_bets)
-                / total_backtest_bets
+        backtest_df = backtest_df.reset_index(drop=True)
+
+        backtest_df["Bet Number"] = backtest_df.index + 1
+
+        backtest_df["Running Profit/Loss"] = backtest_df[
+            "Profit/Loss"
+        ].cumsum()
+
+        bt_col1, bt_col2, bt_col3, bt_col4 = st.columns(4)
+
+        with bt_col1:
+            st.metric(
+                "Backtest Bets",
+                total_backtest_bets
+            )
+
+        with bt_col2:
+            st.metric(
+                "Tip Accuracy",
+                f"{accuracy:.1f}%"
+            )
+
+        with bt_col3:
+            st.metric(
+                "Profit / Loss",
+                f"${total_backtest_profit:.2f}"
+            )
+
+        with bt_col4:
+            st.metric(
+                "Simulated ROI",
+                f"{backtest_roi:.1f}%"
+            )
+
+        st.subheader("Backtest Running Profit/Loss")
+
+        st.line_chart(
+            backtest_df[
+                [
+                    "Bet Number",
+                    "Running Profit/Loss"
+                ]
+            ],
+            x="Bet Number",
+            y="Running Profit/Loss",
+            height=320
+        )
+
+        st.subheader("Backtest by Season")
+
+        season_summary = backtest_df.groupby(
+            "Season"
+        ).agg(
+            Bets=("Match", "count"),
+            Wins=("Correct", "sum"),
+            Total_Stake=("Stake", "sum"),
+            Profit_Loss=("Profit/Loss", "sum")
+        ).reset_index()
+
+        season_summary["Accuracy %"] = (
+            season_summary["Wins"]
+            / season_summary["Bets"]
+            * 100
+        ).round(1)
+
+        season_summary["ROI %"] = (
+            season_summary["Profit_Loss"]
+            / season_summary["Total_Stake"]
+            * 100
+        ).round(1)
+
+        st.dataframe(
+            season_summary,
+            width="stretch",
+            hide_index=True
+        )
+
+        st.subheader("Backtest by Confidence Threshold")
+
+        confidence_thresholds = [
+            55,
+            60,
+            65,
+            70,
+            75
+        ]
+
+        confidence_rows = []
+
+        for threshold in confidence_thresholds:
+            filtered_df = backtest_df[
+                backtest_df["Confidence"] >= threshold
+            ].copy()
+
+            if filtered_df.empty:
+                confidence_rows.append({
+                    "Confidence Threshold": f"{threshold}%+",
+                    "Bets": 0,
+                    "Wins": 0,
+                    "Accuracy %": 0,
+                    "Total Stake": 0,
+                    "Profit/Loss": 0,
+                    "ROI %": 0
+                })
+                continue
+
+            bets = len(filtered_df)
+            wins = len(
+                filtered_df[
+                    filtered_df["Correct"] == True
+                ]
+            )
+
+            total_stake = filtered_df["Stake"].sum()
+            profit_loss = filtered_df["Profit/Loss"].sum()
+
+            accuracy_pct = (
+                wins
+                / bets
                 * 100
             )
 
-            total_backtest_staked = backtest_df["Stake"].sum()
-            total_backtest_profit = backtest_df["Profit/Loss"].sum()
-
-            if total_backtest_staked > 0:
-                backtest_roi = (
-                    total_backtest_profit
-                    / total_backtest_staked
+            if total_stake > 0:
+                roi_pct = (
+                    profit_loss
+                    / total_stake
                     * 100
                 )
             else:
-                backtest_roi = 0
+                roi_pct = 0
 
-            backtest_df = backtest_df.reset_index(drop=True)
-            backtest_df["Bet Number"] = backtest_df.index + 1
-            backtest_df["Running Profit/Loss"] = backtest_df[
-                "Profit/Loss"
-            ].cumsum()
+            confidence_rows.append({
+                "Confidence Threshold": f"{threshold}%+",
+                "Bets": bets,
+                "Wins": wins,
+                "Accuracy %": round(accuracy_pct, 1),
+                "Total Stake": round(total_stake, 2),
+                "Profit/Loss": round(profit_loss, 2),
+                "ROI %": round(roi_pct, 1)
+                })
 
-            bt_col1, bt_col2, bt_col3, bt_col4 = st.columns(4)
+        confidence_summary = pd.DataFrame(
+            confidence_rows
+        )
 
-            with bt_col1:
+        st.dataframe(
+            confidence_summary,
+            width="stretch",
+            hide_index=True
+        )
+
+        st.subheader("ROI by Confidence Threshold")
+
+        st.bar_chart(
+            confidence_summary[
+                [
+                    "Confidence Threshold",
+                    "ROI %"
+                ]
+            ],
+            x="Confidence Threshold",
+            y="ROI %",
+            height=320
+        )
+
+# --------------------------
+# MINIMUM CONFIDENCE BETTING RULE
+# --------------------------
+
+        st.subheader("🎯 Minimum Confidence Betting Rule")
+
+        selected_min_confidence = st.selectbox(
+            "Only bet when confidence is at least",
+            options=[55, 60, 65, 70, 75],
+            index=3
+        )
+
+        filtered_backtest_df = backtest_df[
+            backtest_df["Confidence"] >= selected_min_confidence
+        ].copy()
+
+        if filtered_backtest_df.empty:
+            st.warning(
+                "No bets found for this confidence rule."
+            )
+
+        else:
+            filtered_bets = len(filtered_backtest_df)
+
+            filtered_wins = len(
+                filtered_backtest_df[
+                    filtered_backtest_df["Correct"] == True
+                ]
+            )
+
+            filtered_accuracy = (
+                filtered_wins
+                / filtered_bets
+                * 100
+            )
+
+            filtered_total_staked = filtered_backtest_df["Stake"].sum()
+            filtered_profit = filtered_backtest_df["Profit/Loss"].sum()
+
+            if filtered_total_staked > 0:
+                filtered_roi = (
+                    filtered_profit
+                    / filtered_total_staked
+                    * 100
+                )
+            else:
+                filtered_roi = 0
+
+            rule_col1, rule_col2, rule_col3, rule_col4 = st.columns(4)
+
+            with rule_col1:
                 st.metric(
-                    "Backtest Bets",
-                    total_backtest_bets
+                    "Filtered Bets",
+                    filtered_bets
                 )
 
-            with bt_col2:
+            with rule_col2:
                 st.metric(
-                    "Tip Accuracy",
-                    f"{accuracy:.1f}%"
+                    "Filtered Accuracy",
+                    f"{filtered_accuracy:.1f}%"
                 )
 
-            with bt_col3:
+            with rule_col3:
                 st.metric(
-                    "Profit / Loss",
-                    f"${total_backtest_profit:.2f}"
+                    "Filtered Profit / Loss",
+                    f"${filtered_profit:.2f}"
                 )
 
-            with bt_col4:
+            with rule_col4:
                 st.metric(
-                    "Simulated ROI",
-                    f"{backtest_roi:.1f}%"
+                    "Filtered ROI",
+                    f"{filtered_roi:.1f}%"
                 )
 
-            st.subheader("Backtest Running Profit/Loss")
+            filtered_backtest_df = filtered_backtest_df.reset_index(
+                drop=True
+            )
+
+            filtered_backtest_df["Filtered Bet Number"] = (
+                filtered_backtest_df.index + 1
+            )
+
+            filtered_backtest_df["Filtered Running Profit/Loss"] = (
+                filtered_backtest_df["Profit/Loss"].cumsum()
+            )
+
+            st.subheader("Filtered Running Profit/Loss")
 
             st.line_chart(
-                backtest_df[
+                filtered_backtest_df[
                     [
-                        "Bet Number",
-                        "Running Profit/Loss"
+                        "Filtered Bet Number",
+                        "Filtered Running Profit/Loss"
                     ]
                 ],
-                x="Bet Number",
-                y="Running Profit/Loss",
+                x="Filtered Bet Number",
+                y="Filtered Running Profit/Loss",
                 height=320
             )
 
-            st.subheader("Backtest by Season")
+            st.subheader("Filtered Backtest by Season")
 
-            season_summary = backtest_df.groupby(
+            filtered_season_summary = filtered_backtest_df.groupby(
                 "Season"
             ).agg(
                 Bets=("Match", "count"),
@@ -1378,118 +1612,37 @@ if st.button("Run Historical Backtest"):
                 Profit_Loss=("Profit/Loss", "sum")
             ).reset_index()
 
-            season_summary["Accuracy %"] = (
-                season_summary["Wins"]
-                / season_summary["Bets"]
+            filtered_season_summary["Accuracy %"] = (
+                filtered_season_summary["Wins"]
+                / filtered_season_summary["Bets"]
                 * 100
             ).round(1)
 
-            season_summary["ROI %"] = (
-                season_summary["Profit_Loss"]
-                / season_summary["Total_Stake"]
+            filtered_season_summary["ROI %"] = (
+                filtered_season_summary["Profit_Loss"]
+                / filtered_season_summary["Total_Stake"]
                 * 100
             ).round(1)
 
             st.dataframe(
-                season_summary,
+                filtered_season_summary,
                 width="stretch",
                 hide_index=True
-            )
-
-            st.subheader("Backtest by Confidence Threshold")
-
-            confidence_thresholds = [
-                55,
-                60,
-                65,
-                70,
-                75
-            ]
-
-            confidence_rows = []
-
-            for threshold in confidence_thresholds:
-                filtered_df = backtest_df[
-                    backtest_df["Confidence"] >= threshold
-                ].copy()
-
-                if filtered_df.empty:
-                    confidence_rows.append({
-                        "Confidence Threshold": f"{threshold}%+",
-                        "Bets": 0,
-                        "Wins": 0,
-                        "Accuracy %": 0,
-                        "Total Stake": 0,
-                        "Profit/Loss": 0,
-                        "ROI %": 0
-                    })
-                    continue
-
-                bets = len(filtered_df)
-                wins = len(
-                    filtered_df[
-                        filtered_df["Correct"] == True
-                    ]
-                )
-
-                total_stake = filtered_df["Stake"].sum()
-                profit_loss = filtered_df["Profit/Loss"].sum()
-
-                accuracy_pct = (
-                    wins
-                    / bets
-                    * 100
-                )
-
-                if total_stake > 0:
-                    roi_pct = (
-                        profit_loss
-                        / total_stake
-                        * 100
-                    )
-                else:
-                    roi_pct = 0
-
-                confidence_rows.append({
-                    "Confidence Threshold": f"{threshold}%+",
-                    "Bets": bets,
-                    "Wins": wins,
-                    "Accuracy %": round(accuracy_pct, 1),
-                    "Total Stake": round(total_stake, 2),
-                    "Profit/Loss": round(profit_loss, 2),
-                    "ROI %": round(roi_pct, 1)
-                })
-
-            confidence_summary = pd.DataFrame(
-                confidence_rows
-            )
-
-            st.dataframe(
-                confidence_summary,
-                width="stretch",
-                hide_index=True
-            )
-
-            st.subheader("ROI by Confidence Threshold")
-
-            st.bar_chart(
-                confidence_summary[
-                    [
-                        "Confidence Threshold",
-                        "ROI %"
-                    ]
-                ],
-                x="Confidence Threshold",
-                y="ROI %",
-                height=320
             )
 
             st.download_button(
-                label="Download Backtest CSV",
-                data=backtest_df.to_csv(index=False),
-                file_name="sbt_edge_v5_historical_backtest.csv",
+                label="Download Filtered Backtest CSV",
+                data=filtered_backtest_df.to_csv(index=False),
+                file_name=f"sbt_edge_v5_filtered_{selected_min_confidence}_confidence.csv",
                 mime="text/csv"
             )
+
+        st.download_button(
+            label="Download Backtest CSV",
+            data=backtest_df.to_csv(index=False),
+            file_name="sbt_edge_v5_historical_backtest.csv",
+            mime="text/csv"
+        )
 
 
 # ==========================
