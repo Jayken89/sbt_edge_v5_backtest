@@ -27,6 +27,8 @@ K_FACTOR = 40
 HOME_ADVANTAGE = 73
 MARGIN_DIVISOR = 12
 VALID_RESULTS = ["WIN", "LOSS", "PUSH", "VOID", "DRAW"]
+DATA_DIR = "data"
+CURRENT_ODDS_PATH = os.path.join(DATA_DIR, "current_odds_file")
 
 USER_AGENT = "Jayden AFL Predictor - jayken305@gmail.com"
 TEAM_NAME_MAP = {
@@ -999,6 +1001,47 @@ def find_best_odds_for_tip(odds_data, match_name, tipped_team):
         return None, None
 
     return best_price, best_bookmaker
+
+def save_current_odds_file(uploaded_file):
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    # Remove old saved odds files so only one current file exists
+    for extension in [".xlsx", ".csv"]:
+        old_path = CURRENT_ODDS_PATH + extension
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+    saved_path = CURRENT_ODDS_PATH + file_extension
+
+    with open(saved_path, "wb") as output_file:
+        output_file.write(uploaded_file.getbuffer())
+
+    return saved_path
+
+
+def find_saved_current_odds_file():
+    for extension in [".xlsx", ".csv"]:
+        saved_path = CURRENT_ODDS_PATH + extension
+        if os.path.exists(saved_path):
+            return saved_path
+
+    return None
+
+
+def load_saved_current_odds_file(saved_path):
+    if saved_path is None:
+        return None
+
+    if saved_path.endswith(".xlsx"):
+        with open(saved_path, "rb") as file:
+            return prepare_historical_odds_file(file)
+
+    if saved_path.endswith(".csv"):
+        with open(saved_path, "rb") as file:
+            return prepare_historical_odds_file(file)
+
+    return None
     
 
 # ==========================
@@ -1876,11 +1919,24 @@ with backtest_col3:
         step=1.0
     )
 
+st.subheader("📁 Current Odds File")
+
+saved_odds_path = find_saved_current_odds_file()
+
+if saved_odds_path:
+    st.success(f"Saved odds file found: {saved_odds_path}")
+else:
+    st.info("No saved odds file found yet.")
+
 historical_odds_file = st.file_uploader(
     "Upload Historical Odds File",
     type=["csv", "xlsx"],
-    help="Optional. Upload historical odds CSV or the original AFL Excel results file."
+    help="Upload once and save it so the app can reuse it next time."
 )
+
+if historical_odds_file is not None:
+    saved_odds_path = save_current_odds_file(historical_odds_file)
+    st.success(f"Odds file saved to: {saved_odds_path}")
 
 if st.button("Run Historical Backtest"):
 
@@ -1910,6 +1966,12 @@ if st.session_state.has_run_backtest:
             historical_odds_file
         )
 
+    elif saved_odds_path is not None:
+        historical_odds_df = load_saved_current_odds_file(
+            saved_odds_path
+        )
+
+    if historical_odds_df is not None:
         if historical_odds_df.empty:
             st.warning(
                 "Historical odds file loaded, but no usable odds rows were found."
